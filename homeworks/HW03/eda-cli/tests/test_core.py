@@ -21,6 +21,18 @@ def _sample_df() -> pd.DataFrame:
         }
     )
 
+def _has_constant_cols_df() -> pd.DataFrame:
+    return pd.DataFrame({
+        "Name" : ["Girya", "Loly", "Bobba"],
+        "Age" : [33, 17, 22],
+        "Cols" : 3,
+    })
+def test_const_cols():
+    df = _has_constant_cols_df()
+    missing_df = missing_table(df)
+    summary = summarize_dataset(df)
+    has_const_cols_df = compute_quality_flags(summary, missing_df)
+    assert has_const_cols_df["has_constant_columns"] is True
 
 def test_summarize_dataset_basic():
     df = _sample_df()
