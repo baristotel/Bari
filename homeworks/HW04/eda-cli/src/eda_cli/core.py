@@ -180,11 +180,19 @@ def compute_quality_flags(summary: DatasetSummary, missing_df: pd.DataFrame) -> 
     flags: Dict[str, Any] = {}
     flags["too_few_rows"] = summary.n_rows < 100
     flags["too_many_columns"] = summary.n_cols > 100
-
+    zero_threshold = 0.1
+    has_many_zeros_values = any(col.missing_share > zero_threshold for col in summary.columns if col.is_numeric and col.non_null > 0)
+    has_constant_columns = any(cols.unique == 1 for cols in summary.columns)
+    has_suspicious_id_duplicates = next((cols for cols in summary.columns if cols.name == 'user_id'), None)
     max_missing_share = float(missing_df["missing_share"].max()) if not missing_df.empty else 0.0
     flags["max_missing_share"] = max_missing_share
+    flags["has_many_zeros_values"] = has_many_zeros_values
     flags["too_many_missing"] = max_missing_share > 0.5
-
+    flags["has_constant_columns"] = has_constant_columns
+    if has_suspicious_id_duplicates is not None:
+        flags["has_suspicious_id_duplicates"] = has_suspicious_id_duplicates.unique < summary.n_rows
+    else:
+        flags["has_suspicious_id_duplicates"] = False 
     # Простейший «скор» качества
     score = 1.0
     score -= max_missing_share  # чем больше пропусков, тем хуже

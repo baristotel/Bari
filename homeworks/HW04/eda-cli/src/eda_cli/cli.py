@@ -59,6 +59,22 @@ def overview(
     typer.echo("\nКолонки:")
     typer.echo(summary_df.to_string(index=False))
 
+@app.command()
+def head(
+    path: str = typer.Argument(..., help="Путь к CSV-файлу."),
+    n: int = typer.Option(5, help="Кол-во выводимых строк"),
+    sep: str = typer.Option(",", help="Разделитель в CSV."),
+    encoding: str = typer.Option("utf-8", help="Кодировка файла"),
+) -> None:
+    """
+    Вывести первый строки из датасета по указанному пути
+    """
+    df = _load_csv(Path(path), sep=sep, encoding=encoding)
+    summary: DatasetSummary = summarize_dataset(df)
+    summary_df = flatten_summary_for_print(summary)
+    summary_print = summary_df.head(n)
+    typer.echo(f"Первые {n} строк:\n")
+    typer.echo(summary_print.to_string(index=False))
 
 @app.command()
 def report(
@@ -67,6 +83,8 @@ def report(
     sep: str = typer.Option(",", help="Разделитель в CSV."),
     encoding: str = typer.Option("utf-8", help="Кодировка файла."),
     max_hist_columns: int = typer.Option(6, help="Максимум числовых колонок для гистограмм."),
+    title: str = typer.Option("Eda-cli отчет", help="Заголовок отчета"),
+    min_missing_share: float = typer.Option(0.1, help="Порог доли пропусков", min=0.0, max=1.0),
 ) -> None:
     """
     Сгенерировать полный EDA-отчёт:
@@ -80,7 +98,7 @@ def report(
     out_root.mkdir(parents=True, exist_ok=True)
 
     df = _load_csv(Path(path), sep=sep, encoding=encoding)
-
+    
     # 1. Обзор
     summary = summarize_dataset(df)
     summary_df = flatten_summary_for_print(summary)
@@ -102,7 +120,7 @@ def report(
     # 4. Markdown-отчёт
     md_path = out_root / "report.md"
     with md_path.open("w", encoding="utf-8") as f:
-        f.write(f"# EDA-отчёт\n\n")
+        f.write(f"# {title}\n\n")
         f.write(f"Исходный файл: `{Path(path).name}`\n\n")
         f.write(f"Строк: **{summary.n_rows}**, столбцов: **{summary.n_cols}**\n\n")
 
@@ -111,8 +129,10 @@ def report(
         f.write(f"- Макс. доля пропусков по колонке: **{quality_flags['max_missing_share']:.2%}**\n")
         f.write(f"- Слишком мало строк: **{quality_flags['too_few_rows']}**\n")
         f.write(f"- Слишком много колонок: **{quality_flags['too_many_columns']}**\n")
-        f.write(f"- Слишком много пропусков: **{quality_flags['too_many_missing']}**\n\n")
-
+        f.write(f"- Слишком много пропусков: **{quality_flags['too_many_missing']}**\n")
+        f.write(f"- Наличие одинаковых id: **{quality_flags['has_suspicious_id_duplicates']}**\n")
+        f.write(f"- Слишком много нулей в числовых колонках: **{quality_flags['has_many_zeros_values']}**\n")
+        f.write(f"- Наличие одинаковых столбцов **{quality_flags['has_constant_columns']}**\n\n")
         f.write("## Колонки\n\n")
         f.write("См. файл `summary.csv`.\n\n")
 
@@ -121,6 +141,15 @@ def report(
             f.write("Пропусков нет или датасет пуст.\n\n")
         else:
             f.write("См. файлы `missing.csv` и `missing_matrix.png`.\n\n")
+
+        
+        exceeding_threshold_cols = missing_df[missing_df["missing_share"] > min_missing_share]
+        if not exceeding_threshold_cols.empty:
+            f.write("## Колонки порог доли пропусков которых выше заданного\n\n")
+            f.write(f"Доля пропусков > {min_missing_share:.1%}\n\n")
+            for col, row in exceeding_threshold_cols.iterrows():
+                f.write(f"- **{col}**: {row['missing_share']:.2%}\n")
+            f.write("\n")
 
         f.write("## Корреляция числовых признаков\n\n")
         if corr_df.empty:
@@ -146,7 +175,7 @@ def report(
     typer.echo(f"- Основной markdown: {md_path}")
     typer.echo("- Табличные файлы: summary.csv, missing.csv, correlation.csv, top_categories/*.csv")
     typer.echo("- Графики: hist_*.png, missing_matrix.png, correlation_heatmap.png")
-
+   
 
 if __name__ == "__main__":
     app()
